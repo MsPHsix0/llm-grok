@@ -119,8 +119,9 @@ class Grok(llm.KeyModel):
                             time.sleep(1)
                             progress.update(task, advance=1)
                     return True
-            except ValueError:
-                pass
+            except json.JSONDecodeError as jde:
+        print(f"JSON decoding failed in rate limit handler: {jde}")
+                
 
         if attempt < self.MAX_RETRIES - 1:
             delay = self.BASE_DELAY * (2**attempt)
@@ -150,8 +151,11 @@ class Grok(llm.KeyModel):
                         "Your x.ai API quota has been exceeded or you have insufficient credits.\n"
                         "Please visit https://x.ai to check your account status.",
                     )
-        except:
-            pass
+        except json.JSONDecodeError as jde:
+            # Log the JSON decode error so it doesn’t fail silently
+    print(f"JSON decoding failed: {jde}")
+               
+            
 
         raise RateLimitError(
             "Rate Limit Exceeded",
@@ -181,7 +185,9 @@ class Grok(llm.KeyModel):
                 ):
                     if self._handle_rate_limit(e.response, attempt):
                         continue
+                print(f"HTTPError encountered on attempt {attempt}: {e}")
                 raise
+                
 
     def execute(self, prompt, stream, response, conversation, key=None):
         key = self.get_key(key)
@@ -246,7 +252,8 @@ class Grok(llm.KeyModel):
                                                     content = delta["content"]
                                                     if content:
                                                         yield content
-                                        except json.JSONDecodeError:
+                                        except json.JSONDecodeError as je:
+                                            print(f"JSON decode error on data chunk: {je} | Raw data: {data}")
                                             continue
             else:
                 with httpx.Client() as client:
@@ -288,7 +295,8 @@ class Grok(llm.KeyModel):
                         error_body = e.response.text
                     else:
                         error_body = e.response.read().decode("utf-8")
-                except:
+                except: Exception as ex: 
+                    print(f"Error reading response: {ex}")
                     error_body = str(e)
 
             error_message = f"API Error: {str(e)}"
@@ -297,8 +305,8 @@ class Grok(llm.KeyModel):
                     error_json = json.loads(error_body)
                     if "error" in error_json and "message" in error_json["error"]:
                         error_message = error_json["error"]["message"]
-                except:
-                    pass
+                except: json.JSONDecodeError as je:
+                    print(f"Error decoding error JSON: {je}")
 
             error_panel = Panel.fit(
                 f"[bold red]API Error[/]\n\n[white]{error_message}[/]",
